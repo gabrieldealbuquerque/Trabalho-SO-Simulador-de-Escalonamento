@@ -1,4 +1,0 @@
-[FCFS] Executando processo PID 1
-[FCFS] Executando processo PID 2
-[FCFS] Executando processo PID 3
-Escalonador terminou execução de todos processos

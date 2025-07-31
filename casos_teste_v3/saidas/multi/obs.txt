@@ -1,0 +1,4 @@
+Observações: 
+- Os eventos acontecem paralelamente onde possível, e a ordem de execução pode variar dependendo da estratégia de desempate (aqui consideramos a ordem de chegada à fila).
+- Mesmo na modelagem de threads, observe que os processadores dão vazão aos PROCESSOS - e somente atendem threads de um mesmo processo de forma simultânea quando não existe mais de um processo na fila de READY (lembrando que a política de escalonamento pode influenciar nesta decisão!!!).
+
