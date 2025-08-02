@@ -1,15 +1,18 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
-TARGET = escalonador
-SOURCE = escalonador.c
+CFLAGS = -Wall -Wextra -std=c99 -pthread
 
-all: $(TARGET)
+SOURCES = main.c queue.c scheduler.c log.c
 
-$(TARGET): $(SOURCE)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE)
+all: monoprocessador multiprocessador
+
+monoprocessador: $(SOURCES)
+	$(CC) $(CFLAGS) -DMONO -o trabSO_mono $(SOURCES)
+
+multiprocessador: $(SOURCES)
+	$(CC) $(CFLAGS) -DMULTI -o trabSO_multi $(SOURCES)
 
 clean:
-	rm -f $(TARGET)
+	rm -f trabSO_mono trabSO_multi
 
 test1: $(TARGET)
 	./$(TARGET) < casos_teste_v3/entradas/1.txt
