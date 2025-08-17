@@ -21,6 +21,19 @@ void enqueue(ReadyQueue* queue, QueueItem item) {
     pthread_mutex_unlock(&queue->mutex);
 }
 
+void enqueue_front(ReadyQueue* queue, QueueItem item) {
+    pthread_mutex_lock(&queue->mutex);
+    if (queue->size < MAX_PROCESSES) {
+        // Move front backward circularly
+        queue->front = (queue->front - 1 + MAX_PROCESSES) % MAX_PROCESSES;
+        queue->processes[queue->front] = item;
+        queue->size++;
+        // rear stays the same logical position (front + size modulo)
+        queue->rear = (queue->front + queue->size) % MAX_PROCESSES;
+    }
+    pthread_mutex_unlock(&queue->mutex);
+}
+
 QueueItem dequeue(ReadyQueue* queue) {
     pthread_mutex_lock(&queue->mutex);
     if (queue->size == 0) {

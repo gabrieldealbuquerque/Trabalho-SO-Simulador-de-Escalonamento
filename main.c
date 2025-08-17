@@ -22,6 +22,7 @@ int num_processes;
 int quantum;
 int scheduler_type;
 PCB* pcb_list;
+long long simulation_start_ms;
 
 // Function to get current time in ms
 long long current_time_ms() {
@@ -37,6 +38,7 @@ long long current_time_ms() {
 void* generator_func(void* arg) {
     (void)arg;
     long long start_time = current_time_ms();
+    simulation_start_ms = start_time;
     int idx = 0;
     while (idx < num_processes) {
         PCB* pcb = &pcb_list[idx];
@@ -48,6 +50,8 @@ void* generator_func(void* arg) {
                     TCB* tcb = malloc(sizeof(TCB));
                     tcb->pcb = pcb;
                     tcb->thread_index = j;
+                    tcb->last_processor_id = -1; // Initialize as unassigned
+                    tcb->preferred_processor_id = -1; // Will be assigned when enqueued
                     pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
                     enqueue(&ready_queue, (QueueItem)tcb);
                 }
@@ -57,6 +61,8 @@ void* generator_func(void* arg) {
                     TCB* tcb = malloc(sizeof(TCB));
                     tcb->pcb = pcb;
                     tcb->thread_index = j;
+                    tcb->last_processor_id = -1; // Initialize as unassigned
+                    tcb->preferred_processor_id = -1; // Will be assigned when enqueued
                     pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
                 }
                 enqueue(&ready_queue, (QueueItem)pcb);
@@ -127,6 +133,9 @@ int main(int argc, char* argv[]) {
 
     fclose(input);
 
+    // Set deterministic seed for reproducible results
+    srand(12345);
+    
     init_log();
     init_scheduler();
 
