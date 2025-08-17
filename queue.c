@@ -1,5 +1,7 @@
 
 #include "queue.h"
+#include "config.h"
+#include "tcb.h"
 #include <stdlib.h>
 
 void init_queue(ReadyQueue* queue) {
@@ -59,11 +61,11 @@ QueueItem peek_highest_priority(ReadyQueue* queue) {
         QueueItem item = queue->processes[idx];
         int priority;
         
-        #ifdef MULTI
-        priority = ((TCB*)item)->pcb->priority;
-        #else
-        priority = ((PCB*)item)->priority;
-        #endif
+        if (is_multiprocessor_mode()) {
+            priority = pcb_get_priority(((TCB*)item)->pcb);
+        } else {
+            priority = pcb_get_priority((PCB*)item);
+        }
         
         if (priority < best_priority) {
             best_priority = priority;
@@ -99,11 +101,11 @@ QueueItem remove_highest_priority(ReadyQueue* queue) {
         QueueItem item = queue->processes[idx];
         int priority;
         
-        #ifdef MULTI
-        priority = ((TCB*)item)->pcb->priority;
-        #else
-        priority = ((PCB*)item)->priority;
-        #endif
+        if (is_multiprocessor_mode()) {
+            priority = pcb_get_priority(((TCB*)item)->pcb);
+        } else {
+            priority = pcb_get_priority((PCB*)item);
+        }
         
         if (priority < best_priority) {
             best_priority = priority;

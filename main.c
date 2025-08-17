@@ -3,6 +3,7 @@
 #include "tcb.h"
 #include "queue.h"
 #include "log.h"
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -40,26 +41,26 @@ void* generator_func(void* arg) {
     while (idx < num_processes) {
         PCB* pcb = &pcb_list[idx];
         long long now = current_time_ms() - start_time;
-        if (now >= pcb->start_time) {
-#ifdef MULTI
-            // In multi, enqueue each thread (TCB) individually
-            for (int j = 0; j < pcb->num_threads; j++) {
-                TCB* tcb = malloc(sizeof(TCB));
-                tcb->pcb = pcb;
-                tcb->thread_index = j;
-                pthread_create(&pcb->thread_ids[j], NULL, thread_func, tcb);
-                enqueue(&ready_queue, (QueueItem)tcb);
+        if (now >= pcb_get_start_time(pcb)) {
+            if (is_multiprocessor_mode()) {
+                // In multi, enqueue each thread (TCB) individually
+                for (int j = 0; j < pcb_get_num_threads(pcb); j++) {
+                    TCB* tcb = malloc(sizeof(TCB));
+                    tcb->pcb = pcb;
+                    tcb->thread_index = j;
+                    pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
+                    enqueue(&ready_queue, (QueueItem)tcb);
+                }
+            } else {
+                // In mono, create threads but enqueue the process (PCB)
+                for (int j = 0; j < pcb_get_num_threads(pcb); j++) {
+                    TCB* tcb = malloc(sizeof(TCB));
+                    tcb->pcb = pcb;
+                    tcb->thread_index = j;
+                    pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
+                }
+                enqueue(&ready_queue, (QueueItem)pcb);
             }
-#else
-            // In mono, create threads but enqueue the process (PCB)
-            for (int j = 0; j < pcb->num_threads; j++) {
-                TCB* tcb = malloc(sizeof(TCB));
-                tcb->pcb = pcb;
-                tcb->thread_index = j;
-                pthread_create(&pcb->thread_ids[j], NULL, thread_func, tcb);
-            }
-            enqueue(&ready_queue, (QueueItem)pcb);
-#endif
             pthread_mutex_lock(&scheduler_mutex);
             pthread_cond_broadcast(&scheduler_cv);
             pthread_mutex_unlock(&scheduler_mutex);
@@ -79,15 +80,19 @@ void* generator_func(void* arg) {
 int compare_start_time(const void* a, const void* b) {
     PCB* pcb_a = (PCB*)a;
     PCB* pcb_b = (PCB*)b;
-    return pcb_a->start_time - pcb_b->start_time;
+    return pcb_get_start_time(pcb_a) - pcb_get_start_time(pcb_b);
 }
 
 // Main function
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
+        fprintf(stderr, "Note: Processor mode (mono/multi) is determined at compile time\n");
         return 1;
     }
+    
+    // Initialize configuration (mode automatically detected from compile flags)
+    init_config();
 
     FILE* input = fopen(argv[1], "r");
     if (!input) {
@@ -100,15 +105,20 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < num_processes; i++) {
         PCB* pcb = &pcb_list[i];
-        fscanf(input, "%d %d %d %d", &pcb->process_len, &pcb->priority, &pcb->num_threads, &pcb->start_time);
-        pcb->pid = i + 1; // PIDs start from 1
+        int process_len, priority, num_threads, start_time;
+        fscanf(input, "%d %d %d %d", &process_len, &priority, &num_threads, &start_time);
+        pcb_set_process_len(pcb, process_len);
+        pcb_set_priority(pcb, priority);
+        pcb_set_num_threads(pcb, num_threads);
+        pcb_set_start_time(pcb, start_time);
+        pcb_set_pid(pcb, i + 1); // PIDs start from 1
         // Process gets full duration, threads share it
-        pcb->remaining_time = pcb->process_len;
-        pcb->state = READY;
-        pcb->logged_finish = 0; // Initialize finish log flag
-        pthread_mutex_init(&pcb->mutex, NULL);
-        pthread_cond_init(&pcb->cv, NULL);
-        pcb->thread_ids = malloc(pcb->num_threads * sizeof(pthread_t));
+        pcb_set_remaining_time(pcb, process_len);
+        pcb_set_state(pcb, READY);
+        pcb_set_logged_finish(pcb, 0); // Initialize finish log flag
+        pcb_init_mutex(pcb);
+        pcb_init_cv(pcb);
+        pcb_set_thread_ids(pcb, malloc(num_threads * sizeof(pthread_t)));
     }
 
     fscanf(input, "%d", &scheduler_type);
@@ -120,13 +130,9 @@ int main(int argc, char* argv[]) {
     init_log();
     init_scheduler();
 
-    #ifdef MULTI
-    #define NUM_CPUS 2
-    #else
-    #define NUM_CPUS 1
-    #endif
-    pthread_t scheduler_threads[NUM_CPUS];
-    for (int i = 0; i < NUM_CPUS; i++) {
+    int cpu_count = get_cpu_count();
+    pthread_t scheduler_threads[cpu_count];
+    for (int i = 0; i < cpu_count; i++) {
         pthread_create(&scheduler_threads[i], NULL, scheduler_func, (void*)(intptr_t)i);
     }
 
@@ -137,12 +143,12 @@ int main(int argc, char* argv[]) {
 
     // Wait for all processes to finish
     pthread_join(generator_thread, NULL);
-    for (int i = 0; i < NUM_CPUS; i++) {
+    for (int i = 0; i < cpu_count; i++) {
         pthread_join(scheduler_threads[i], NULL);
     }
     for (int i = 0; i < num_processes; i++) {
-        for (int j = 0; j < pcb_list[i].num_threads; j++) {
-            pthread_join(pcb_list[i].thread_ids[j], NULL);
+        for (int j = 0; j < pcb_get_num_threads(&pcb_list[i]); j++) {
+            pthread_join(pcb_get_thread_id(&pcb_list[i], j), NULL);
         }
     }
 
@@ -150,9 +156,9 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     for (int i = 0; i < num_processes; i++) {
-        free(pcb_list[i].thread_ids);
-        pthread_mutex_destroy(&pcb_list[i].mutex);
-        pthread_cond_destroy(&pcb_list[i].cv);
+        pcb_free_thread_ids(&pcb_list[i]);
+        pcb_destroy_mutex(&pcb_list[i]);
+        pcb_destroy_cv(&pcb_list[i]);
     }
     free(pcb_list);
 

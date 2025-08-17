@@ -2,6 +2,7 @@
 #include "scheduler.h"
 #include "tcb.h"
 #include "log.h"
+#include "config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -9,11 +10,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#ifdef MULTI
-#define NUM_CPUS 2
-#else
-#define NUM_CPUS 1
-#endif
+// NUM_CPUS is now determined dynamically via config system
 
 ReadyQueue ready_queue;
 pthread_cond_t scheduler_cv = PTHREAD_COND_INITIALIZER;
@@ -21,12 +18,10 @@ pthread_mutex_t scheduler_mutex = PTHREAD_MUTEX_INITIALIZER;
 int generator_done = 0;
 
 // For multiprocessor termination synchronization
-#ifdef MULTI
 pthread_mutex_t termination_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t termination_cv = PTHREAD_COND_INITIALIZER;
 int processors_finished = 0;
 int termination_logged = 0;
-#endif
 
 void init_scheduler() {
     init_queue(&ready_queue);
@@ -37,32 +32,32 @@ void* thread_func(void* arg) {
     PCB* pcb = tcb->pcb;
 
     while (1) {
-        pthread_mutex_lock(&pcb->mutex);
-        while (pcb->state != RUNNING && pcb->remaining_time > 0) {
-            pthread_cond_wait(&pcb->cv, &pcb->mutex);
+        pcb_lock_mutex(pcb);
+        while (pcb_get_state(pcb) != RUNNING && pcb_get_remaining_time(pcb) > 0) {
+            pcb_wait_cv(pcb);
         }
-        if (pcb->remaining_time <= 0 || pcb->state == FINISHED) {
-            pthread_mutex_unlock(&pcb->mutex);
+        if (pcb_get_remaining_time(pcb) <= 0 || pcb_get_state(pcb) == FINISHED) {
+            pcb_unlock_mutex(pcb);
             break;
         }
         
         // Execute 500ms slice
         struct timespec ts = {0, 500 * 1000000LL};
-        pthread_mutex_unlock(&pcb->mutex);
+        pcb_unlock_mutex(pcb);
         nanosleep(&ts, NULL);
         
-        pthread_mutex_lock(&pcb->mutex);
-        if (pcb->state == RUNNING && pcb->remaining_time > 0) {
+        pcb_lock_mutex(pcb);
+        if (pcb_get_state(pcb) == RUNNING && pcb_get_remaining_time(pcb) > 0) {
             // In multi, each thread contributes independently to the process execution
-            int slice = 500 / pcb->num_threads;
+            int slice = 500 / pcb_get_num_threads(pcb);
             if (slice < 1) slice = 1;
-            pcb->remaining_time -= slice;
-            if (pcb->remaining_time <= 0) {
-                pcb->state = FINISHED;
-                pthread_cond_broadcast(&pcb->cv);
+            pcb_decrease_remaining_time(pcb, slice);
+            if (pcb_get_remaining_time(pcb) <= 0) {
+                pcb_set_state(pcb, FINISHED);
+                pcb_broadcast_cv(pcb);
             }
         }
-        pthread_mutex_unlock(&pcb->mutex);
+        pcb_unlock_mutex(pcb);
     }
 
     free(tcb);
@@ -86,11 +81,11 @@ void* scheduler_func(void* arg) {
             int all_finished = 1;
             for (int i = 0; i < num_processes; i++) {
                 PCB* check_pcb = &pcb_list[i];
-                pthread_mutex_lock(&check_pcb->mutex);
-                if (check_pcb->state != FINISHED) {
+                pcb_lock_mutex(check_pcb);
+                if (pcb_get_state(check_pcb) != FINISHED) {
                     all_finished = 0;
                 }
-                pthread_mutex_unlock(&check_pcb->mutex);
+                pcb_unlock_mutex(check_pcb);
             }
             
             if (!all_finished) {
@@ -122,78 +117,79 @@ void* scheduler_func(void* arg) {
         }
 
         PCB* pcb;
-#ifdef MULTI
-        TCB* tcb = (TCB*)item;
-        pcb = tcb->pcb;
-#else
-        pcb = (PCB*)item;
-#endif
+        TCB* tcb = NULL;
+        if (is_multiprocessor_mode()) {
+            tcb = (TCB*)item;
+            pcb = tcb->pcb;
+        } else {
+            pcb = (PCB*)item;
+        }
 
-        pthread_mutex_lock(&pcb->mutex);
-        pcb->state = RUNNING;
-        pthread_cond_broadcast(&pcb->cv);
-        pthread_mutex_unlock(&pcb->mutex);
+        pcb_lock_mutex(pcb);
+        pcb_set_state(pcb, RUNNING);
+        pcb_broadcast_cv(pcb);
+        pcb_unlock_mutex(pcb);
 
         const char* policy = get_policy_string();
         if (scheduler_type == 2) { // RR
-#ifdef MULTI
-            log_event("[%s] Executando processo PID %d com quantum %dms // processador %d\n", policy, pcb->pid, quantum, processor_id);
-#else
-            log_event("[%s] Executando processo PID %d com quantum %dms\n", policy, pcb->pid, quantum);
-#endif
+            if (is_multiprocessor_mode()) {
+                log_event("[%s] Executando processo PID %d com quantum %dms // processador %d\n", policy, pcb_get_pid(pcb), quantum, processor_id);
+            } else {
+                log_event("[%s] Executando processo PID %d com quantum %dms\n", policy, pcb_get_pid(pcb), quantum);
+            }
         } else if (scheduler_type == 3) { // PRIORITY
-#ifdef MULTI
-            log_event("[%s] Executando processo PID %d prioridade %d // processador %d\n", policy, pcb->pid, pcb->priority, processor_id);
-#else
-            log_event("[%s] Executando processo PID %d prioridade %d\n", policy, pcb->pid, pcb->priority);
-#endif
+            if (is_multiprocessor_mode()) {
+                log_event("[%s] Executando processo PID %d prioridade %d // processador %d\n", policy, pcb_get_pid(pcb), pcb_get_priority(pcb), processor_id);
+            } else {
+                log_event("[%s] Executando processo PID %d prioridade %d\n", policy, pcb_get_pid(pcb), pcb_get_priority(pcb));
+            }
         } else { // FCFS
-#ifdef MULTI
-            log_event("[%s] Executando processo PID %d // processador %d\n", policy, pcb->pid, processor_id);
-#else
-            log_event("[%s] Executando processo PID %d\n", policy, pcb->pid);
-#endif
+            if (is_multiprocessor_mode()) {
+                log_event("[%s] Executando processo PID %d // processador %d\n", policy, pcb_get_pid(pcb), processor_id);
+            } else {
+                log_event("[%s] Executando processo PID %d\n", policy, pcb_get_pid(pcb));
+            }
         }
 
         if (scheduler_type == 1) { // FCFS
-#ifdef MULTI
-            // In multiprocessor FCFS, execute the thread and wait for completion
-            int finished = 0;
-            while (!finished) {
-                struct timespec wait_ts = {0, 10000000}; // Check every 10ms
-                nanosleep(&wait_ts, NULL);
-                pthread_mutex_lock(&pcb->mutex);
-                if (pcb->state == FINISHED) {
-                    if (!pcb->logged_finish) {
-                        log_event("[%s] Processo PID %d finalizado\n", policy, pcb->pid);
-                        pcb->logged_finish = 1;
+            if (is_multiprocessor_mode()) {
+                // In multiprocessor FCFS, execute the thread and wait for completion
+                int finished = 0;
+                while (!finished) {
+                    struct timespec wait_ts = {0, 10000000}; // Check every 10ms
+                    nanosleep(&wait_ts, NULL);
+                    pcb_lock_mutex(pcb);
+                    if (pcb_get_state(pcb) == FINISHED) {
+                        if (!pcb_get_logged_finish(pcb)) {
+                            log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
+                            pcb_set_logged_finish(pcb, 1);
+                        }
+                        finished = 1;
                     }
-                    finished = 1;
+                    pcb_unlock_mutex(pcb);
                 }
-                pthread_mutex_unlock(&pcb->mutex);
-            }
-#else
-            // FCFS mono - wait for process to complete naturally
-            long long wait_start = current_time_ms();
-            int finished = 0;
-            while (!finished) {
-                struct timespec wait_ts = {0, 1000000};
-                nanosleep(&wait_ts, NULL);
-                pthread_mutex_lock(&pcb->mutex);
-                if (pcb->state == FINISHED) {
-                    if (!pcb->logged_finish) {
-                        log_event("[%s] Processo PID %d finalizado\n", policy, pcb->pid);
-                        pcb->logged_finish = 1;
+            } else {
+                // FCFS mono - wait for process to complete naturally
+                long long wait_start = current_time_ms();
+                int finished = 0;
+                while (!finished) {
+                    struct timespec wait_ts = {0, 1000000};
+                    nanosleep(&wait_ts, NULL);
+                    pcb_lock_mutex(pcb);
+                    if (pcb_get_state(pcb) == FINISHED) {
+                        if (!pcb_get_logged_finish(pcb)) {
+                            log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
+                            pcb_set_logged_finish(pcb, 1);
+                        }
+                        finished = 1;
                     }
-                    finished = 1;
-                }
-                pthread_mutex_unlock(&pcb->mutex);
-                if (current_time_ms() - wait_start > 60000) {
-                    log_event("Timeout waiting for process %d to finish\n", pcb->pid);
-                    break;
+                    pcb_unlock_mutex(pcb);
+                    if (current_time_ms() - wait_start > 60000) {
+                        log_event("Timeout waiting for process %d to finish\n", pcb_get_pid(pcb));
+                        break;
+                    }
                 }
             }
-#endif
         } else if (scheduler_type == 2) { // RR
             // Round Robin - check periodically if process finishes or quantum expires
             long long start_time = current_time_ms();
@@ -201,31 +197,31 @@ void* scheduler_func(void* arg) {
             while (!finished && (current_time_ms() - start_time) < quantum) {
                 struct timespec wait_ts = {0, 10000000}; // Check every 10ms
                 nanosleep(&wait_ts, NULL);
-                pthread_mutex_lock(&pcb->mutex);
-                if (pcb->state == FINISHED) {
-                    if (!pcb->logged_finish) {
-                        log_event("[%s] Processo PID %d finalizado\n", policy, pcb->pid);
-                        pcb->logged_finish = 1;
+                pcb_lock_mutex(pcb);
+                if (pcb_get_state(pcb) == FINISHED) {
+                    if (!pcb_get_logged_finish(pcb)) {
+                        log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
+                        pcb_set_logged_finish(pcb, 1);
                     }
                     finished = 1;
                 }
-                pthread_mutex_unlock(&pcb->mutex);
+                pcb_unlock_mutex(pcb);
             }
             
-            pthread_mutex_lock(&pcb->mutex);
-            if (pcb->state == RUNNING && pcb->remaining_time > 0) {
+            pcb_lock_mutex(pcb);
+            if (pcb_get_state(pcb) == RUNNING && pcb_get_remaining_time(pcb) > 0) {
                 // Quantum expired, preempt and reenqueue
-                pcb->state = READY;
-#ifdef MULTI
-                enqueue(&ready_queue, (QueueItem)tcb);
-#else
-                enqueue(&ready_queue, (QueueItem)pcb);
-#endif
+                pcb_set_state(pcb, READY);
+                if (is_multiprocessor_mode()) {
+                    enqueue(&ready_queue, (QueueItem)tcb);
+                } else {
+                    enqueue(&ready_queue, (QueueItem)pcb);
+                }
                 pthread_mutex_lock(&scheduler_mutex);
                 pthread_cond_broadcast(&scheduler_cv);
                 pthread_mutex_unlock(&scheduler_mutex);
             }
-            pthread_mutex_unlock(&pcb->mutex);
+            pcb_unlock_mutex(pcb);
         } else { // PRIORITY - preemptive
             // Check continuously for higher priority processes arriving
             int finished = 0;
@@ -233,14 +229,14 @@ void* scheduler_func(void* arg) {
                 struct timespec wait_ts = {0, 10000000}; // Check every 10ms
                 nanosleep(&wait_ts, NULL);
                 
-                pthread_mutex_lock(&pcb->mutex);
-                if (pcb->state == FINISHED) {
-                    log_event("[%s] Processo PID %d finalizado\n", policy, pcb->pid);
+                pcb_lock_mutex(pcb);
+                if (pcb_get_state(pcb) == FINISHED) {
+                    log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
                     finished = 1;
-                    pthread_mutex_unlock(&pcb->mutex);
+                    pcb_unlock_mutex(pcb);
                     break;
                 }
-                pthread_mutex_unlock(&pcb->mutex);
+                pcb_unlock_mutex(pcb);
                 
                 // Check if there's a higher priority process in queue
                 pthread_mutex_lock(&scheduler_mutex);
@@ -249,28 +245,28 @@ void* scheduler_func(void* arg) {
                     QueueItem next_item = peek_highest_priority(&ready_queue);
                     if (next_item) {
                         int next_priority;
-#ifdef MULTI
-                        next_priority = ((TCB*)next_item)->pcb->priority;
-#else
-                        next_priority = ((PCB*)next_item)->priority;
-#endif
+                        if (is_multiprocessor_mode()) {
+                            next_priority = pcb_get_priority(((TCB*)next_item)->pcb);
+                        } else {
+                            next_priority = pcb_get_priority((PCB*)next_item);
+                        }
                         
-                        if (next_priority < pcb->priority) {
+                        if (next_priority < pcb_get_priority(pcb)) {
                             // Higher priority process available, preempt current
-                            pthread_mutex_lock(&pcb->mutex);
-                            if (pcb->state == RUNNING) {
-                                pcb->state = READY;
-#ifdef MULTI
-                                enqueue(&ready_queue, (QueueItem)tcb);
-#else
-                                enqueue(&ready_queue, (QueueItem)pcb);
-#endif
+                            pcb_lock_mutex(pcb);
+                            if (pcb_get_state(pcb) == RUNNING) {
+                                pcb_set_state(pcb, READY);
+                                if (is_multiprocessor_mode()) {
+                                    enqueue(&ready_queue, (QueueItem)tcb);
+                                } else {
+                                    enqueue(&ready_queue, (QueueItem)pcb);
+                                }
                                 pthread_cond_broadcast(&scheduler_cv);
-                                pthread_mutex_unlock(&pcb->mutex);
+                                pcb_unlock_mutex(pcb);
                                 pthread_mutex_unlock(&scheduler_mutex);
                                 break;
                             }
-                            pthread_mutex_unlock(&pcb->mutex);
+                            pcb_unlock_mutex(pcb);
                         }
                     }
                 }
@@ -279,28 +275,28 @@ void* scheduler_func(void* arg) {
         }
     }
     
-#ifdef MULTI
-    // Synchronize termination in multiprocessor
-    pthread_mutex_lock(&termination_mutex);
-    processors_finished++;
-    
-    if (processors_finished == NUM_CPUS) {
-        // Last processor to finish logs termination
-        if (!termination_logged) {
-            log_event("Escalonador terminou execução de todos processos\n");
-            termination_logged = 1;
+    if (is_multiprocessor_mode()) {
+        // Synchronize termination in multiprocessor
+        pthread_mutex_lock(&termination_mutex);
+        processors_finished++;
+        
+        if (processors_finished == get_cpu_count()) {
+            // Last processor to finish logs termination
+            if (!termination_logged) {
+                log_event("Escalonador terminou execução de todos processos\n");
+                termination_logged = 1;
+            }
+            pthread_cond_broadcast(&termination_cv);
+        } else {
+            // Wait for all processors to finish
+            while (processors_finished < get_cpu_count()) {
+                pthread_cond_wait(&termination_cv, &termination_mutex);
+            }
         }
-        pthread_cond_broadcast(&termination_cv);
+        pthread_mutex_unlock(&termination_mutex);
     } else {
-        // Wait for all processors to finish
-        while (processors_finished < NUM_CPUS) {
-            pthread_cond_wait(&termination_cv, &termination_mutex);
-        }
+        log_event("Escalonador terminou execução de todos processos\n");
     }
-    pthread_mutex_unlock(&termination_mutex);
-#else
-    log_event("Escalonador terminou execução de todos processos\n");
-#endif
     return NULL;
 }
 
