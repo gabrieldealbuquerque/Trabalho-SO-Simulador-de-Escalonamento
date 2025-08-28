@@ -23,6 +23,9 @@ int termination_logged = 0;
 
 void init_scheduler() {
     init_queue(&ready_queue);
+    // Reinicia variáveis de sincronização do multiprocessador
+    processors_finished = 0;
+    termination_logged = 0;
 }
 
 void* thread_func(void* arg) {
@@ -57,7 +60,8 @@ void* thread_func(void* arg) {
         pcb_unlock_mutex(pcb);
     }
 
-    free(tcb);
+    // Nao liberar tcb aqui para evitar dangling pointers em filas concorrentes.
+    // A vida do TCB é gerenciada indiretamente pelo fim do programa.
     return NULL;
 }
 
@@ -119,6 +123,11 @@ void* scheduler_func(void* arg) {
             pcb = tcb->pcb;
         } else {
             pcb = (PCB*)item;
+        }
+
+        // Se o processo já terminou (pode ocorrer devido a corrida), pule
+        if (pcb_get_state(pcb) == FINISHED || pcb_get_remaining_time(pcb) <= 0) {
+            continue;
         }
 
         pcb_lock_mutex(pcb);
@@ -227,7 +236,10 @@ void* scheduler_func(void* arg) {
                 
                 pcb_lock_mutex(pcb);
                 if (pcb_get_state(pcb) == FINISHED) {
-                    log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
+                    if (!pcb_get_logged_finish(pcb)) {
+                        log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
+                        pcb_set_logged_finish(pcb, 1);
+                    }
                     finished = 1;
                     pcb_unlock_mutex(pcb);
                     break;

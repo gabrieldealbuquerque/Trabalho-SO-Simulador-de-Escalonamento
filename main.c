@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
     init_scheduler();
 
     int cpu_count = get_cpu_count();
-    pthread_t scheduler_threads[cpu_count];
+    pthread_t *scheduler_threads = malloc(cpu_count * sizeof(pthread_t));
     for (int i = 0; i < cpu_count; i++) {
         pthread_create(&scheduler_threads[i], NULL, scheduler_func, (void*)(intptr_t)i);
     }
@@ -157,6 +157,7 @@ int main(int argc, char* argv[]) {
         pcb_destroy_cv(&pcb_list[i]);
     }
     free(pcb_list);
+    free(scheduler_threads);
 
     return 0;
 }

@@ -5,7 +5,7 @@
 #include <pthread.h>
 #include "pcb.h"
 
-#ifdef MULTI
+#ifdef MULTI_MODE
 #include "tcb.h"
 typedef TCB* QueueItem;
 #else
