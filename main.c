@@ -95,7 +95,7 @@ int compare_start_time(const void* a, const void* b) {
 }
 
 int main(int argc, char* argv[]) {
-    printf("DEBUG: Programa iniciado\n");
+    // printf("DEBUG: Programa iniciado\n");
     
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
 
     fscanf(input, "%d", &scheduler_type);
     quantum = 500;
-    printf("DEBUG: Scheduler type: %d\n", scheduler_type);
+    // printf("DEBUG: Scheduler type: %d\n", scheduler_type);
 
     fclose(input);
 
