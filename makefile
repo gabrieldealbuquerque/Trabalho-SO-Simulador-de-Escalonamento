@@ -19,22 +19,22 @@ clean:
 
 # Testes para monoprocessador
 test1_mono: monoprocessador
-	./$(TARGET) casos_teste_v3/entradas/1.txt
+	./$(TARGET) casos_teste_v5/entradas/1.txt
 
 test2_mono: monoprocessador
-	./$(TARGET) casos_teste_v3/entradas/2.txt
+	./$(TARGET) casos_teste_v5/entradas/2.txt
 
 test3_mono: monoprocessador
-	./$(TARGET) casos_teste_v3/entradas/3.txt
+	./$(TARGET) casos_teste_v5/entradas/3.txt
 
 # Testes para multiprocessador
 test1_multi: multiprocessador
-	./$(TARGET) casos_teste_v3/entradas/1.txt
+	./$(TARGET) casos_teste_v5/entradas/1.txt
 
 test2_multi: multiprocessador
-	./$(TARGET) casos_teste_v3/entradas/2.txt
+	./$(TARGET) casos_teste_v5/entradas/2.txt
 
 test3_multi: multiprocessador
-	./$(TARGET) casos_teste_v3/entradas/3.txt
+	./$(TARGET) casos_teste_v5/entradas/3.txt
 
 .PHONY: all clean monoprocessador multiprocessador test1_mono test2_mono test3_mono test1_multi test2_multi test3_multi

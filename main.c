@@ -169,6 +169,7 @@ int main(int argc, char* argv[]) {
     save_log("escalonador_log_minikernel.txt");
 
     // liberacao de memoria
+    destroy_queue(&ready_queue);
     for (int i = 0; i < num_processes; i++) {
         pcb_free_thread_ids(&pcb_list[i]);
         pcb_destroy_mutex(&pcb_list[i]);

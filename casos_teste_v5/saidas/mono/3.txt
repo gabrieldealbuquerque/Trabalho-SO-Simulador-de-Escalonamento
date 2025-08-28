@@ -1,8 +1,0 @@
-[PRIORITY] Executando processo PID 1 prioridade 2 
-[PRIORITY] Executando processo PID 2 prioridade 1 
-[PRIORITY] Processo PID 2 finalizado
-[PRIORITY] Executando processo PID 1 prioridade 2 
-[PRIORITY] Processo PID 1 finalizado
-[PRIORITY] Executando processo PID 3 prioridade 3 
-[PRIORITY] Processo PID 3 finalizado
-Escalonador terminou execução de todos processos

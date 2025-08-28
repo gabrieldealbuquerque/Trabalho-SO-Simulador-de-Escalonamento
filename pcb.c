@@ -173,8 +173,7 @@ void pcb_set_weight(PCB* pcb, double weight) {
 
 // CFS utils
 
-// Tabela de pesos baseada no nice value (simplificada)
-// Nice -20 = peso 88761, Nice 0 = peso 1024, Nice +19 = peso 15
+// Tabela de pesos baseada no nice value 
 static const double nice_to_weight[] = {
     /* -20 */ 88761.0, 71755.0, 56483.0, 46273.0, 36291.0,
     /* -15 */ 29154.0, 23254.0, 18705.0, 14949.0, 11916.0,

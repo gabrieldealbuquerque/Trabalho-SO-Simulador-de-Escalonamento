@@ -9,8 +9,11 @@ void init_queue(ReadyQueue* queue) {
     queue->rear = 0;
     queue->size = 0;
     pthread_mutex_init(&queue->mutex, NULL);
-    // Para CFS com fila ordenada simples
-    queue->cfs_tree = NULL;
+    // Inicializa a árvore rubro-negra para CFS
+    queue->cfs_tree = (RBTree*)malloc(sizeof(RBTree));
+    if (queue->cfs_tree) {
+        rb_init(queue->cfs_tree);
+    }
 }
 
 void enqueue(ReadyQueue* queue, QueueItem item) {
@@ -153,7 +156,7 @@ QueueItem remove_highest_priority(ReadyQueue* queue) {
     return result;
 }
 
-// Implementações CFS com fila ordenada por vruntime
+// Implementações CFS usando árvore rubro-negra (ordenada por vruntime)
 
 static long long item_vruntime(QueueItem item) {
     if (is_multiprocessor_mode()) {
@@ -164,60 +167,56 @@ static long long item_vruntime(QueueItem item) {
 }
 
 void cfs_enqueue(ReadyQueue* queue, QueueItem item) {
-    pthread_mutex_lock(&queue->mutex);
-    if (queue->size >= MAX_PROCESSES) {
-        pthread_mutex_unlock(&queue->mutex);
-        return;
+    if (!queue->cfs_tree) {
+        // tenta inicializar sob demanda
+        queue->cfs_tree = (RBTree*)malloc(sizeof(RBTree));
+        if (queue->cfs_tree) rb_init(queue->cfs_tree);
     }
+    if (!queue->cfs_tree) return;
     long long vr = item_vruntime(item);
-    int pos = 0;
-    for (int i = 0; i < queue->size; i++) {
-        if (item_vruntime(queue->processes[i]) <= vr) pos = i + 1; else break;
-    }
-    for (int i = queue->size; i > pos; i--) queue->processes[i] = queue->processes[i - 1];
-    queue->processes[pos] = item;
-    queue->size++;
-    queue->front = 0;
-    queue->rear = queue->size;
-    pthread_mutex_unlock(&queue->mutex);
+    rb_insert(queue->cfs_tree, (RBItem)item, vr);
 }
 
 QueueItem cfs_dequeue(ReadyQueue* queue) {
-    pthread_mutex_lock(&queue->mutex);
-    if (queue->size == 0) { pthread_mutex_unlock(&queue->mutex); return NULL; }
-    QueueItem it = queue->processes[0];
-    for (int i = 1; i < queue->size; i++) queue->processes[i - 1] = queue->processes[i];
-    queue->size--;
-    queue->front = 0;
-    queue->rear = queue->size;
-    pthread_mutex_unlock(&queue->mutex);
-    return it;
+    if (!queue->cfs_tree) return NULL;
+    return (QueueItem)rb_extract_min(queue->cfs_tree);
 }
 
 QueueItem cfs_peek(ReadyQueue* queue) {
-    pthread_mutex_lock(&queue->mutex);
-    QueueItem it = (queue->size > 0) ? queue->processes[0] : NULL;
-    pthread_mutex_unlock(&queue->mutex);
-    return it;
+    if (!queue->cfs_tree) return NULL;
+    return (QueueItem)rb_peek_min(queue->cfs_tree);
 }
 
 int cfs_is_empty(ReadyQueue* queue) {
-    pthread_mutex_lock(&queue->mutex);
-    int empty = (queue->size == 0);
-    pthread_mutex_unlock(&queue->mutex);
-    return empty;
+    if (!queue->cfs_tree) return 1;
+    return rb_is_empty(queue->cfs_tree);
 }
 
 long long cfs_get_min_vruntime(ReadyQueue* queue) {
-    pthread_mutex_lock(&queue->mutex);
-    long long v = (queue->size > 0) ? item_vruntime(queue->processes[0]) : 0;
-    pthread_mutex_unlock(&queue->mutex);
-    return v;
+    if (!queue->cfs_tree) return 0;
+    return rb_get_min_vruntime(queue->cfs_tree);
 }
 
 int cfs_size(ReadyQueue* queue) {
-    pthread_mutex_lock(&queue->mutex);
-    int s = queue->size;
-    pthread_mutex_unlock(&queue->mutex);
-    return s;
+    if (!queue->cfs_tree) return 0;
+    return rb_size(queue->cfs_tree);
+}
+
+void destroy_queue(ReadyQueue* queue) {
+    if (queue->cfs_tree) {
+        // Se houver itens restantes na CFS tree (ex.: TCBs não processados), drena e libera
+        if (is_multiprocessor_mode()) {
+            while (!rb_is_empty(queue->cfs_tree)) {
+                RBItem it = rb_extract_min(queue->cfs_tree);
+                if (it) {
+                    // Em MULTI, os itens são TCB*
+                    free((TCB*)it);
+                }
+            }
+        }
+        rb_destroy(queue->cfs_tree);
+        free(queue->cfs_tree);
+        queue->cfs_tree = NULL;
+    }
+    pthread_mutex_destroy(&queue->mutex);
 }
