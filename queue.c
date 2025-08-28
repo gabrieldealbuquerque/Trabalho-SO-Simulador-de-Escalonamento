@@ -1,4 +1,3 @@
-
 #include "queue.h"
 #include "config.h"
 #include "tcb.h"
@@ -24,11 +23,9 @@ void enqueue(ReadyQueue* queue, QueueItem item) {
 void enqueue_front(ReadyQueue* queue, QueueItem item) {
     pthread_mutex_lock(&queue->mutex);
     if (queue->size < MAX_PROCESSES) {
-        // Move front backward circularly
         queue->front = (queue->front - 1 + MAX_PROCESSES) % MAX_PROCESSES;
         queue->processes[queue->front] = item;
         queue->size++;
-        // rear stays the same logical position (front + size modulo)
         queue->rear = (queue->front + queue->size) % MAX_PROCESSES;
     }
     pthread_mutex_unlock(&queue->mutex);
@@ -58,7 +55,7 @@ QueueItem peek(ReadyQueue* queue) {
     return item;
 }
 
-// Peek at highest priority item without removing
+// retorna item de maior prio
 QueueItem peek_highest_priority(ReadyQueue* queue) {
     pthread_mutex_lock(&queue->mutex);
     if (queue->size == 0) {
@@ -97,7 +94,6 @@ int is_empty(ReadyQueue* queue) {
     return empty;
 }
 
-// Remove highest priority item (lowest priority number)
 QueueItem remove_highest_priority(ReadyQueue* queue) {
     pthread_mutex_lock(&queue->mutex);
     if (queue->size == 0) {
@@ -105,7 +101,7 @@ QueueItem remove_highest_priority(ReadyQueue* queue) {
         return NULL;
     }
     
-    // Find the item with highest priority (lowest number)
+    // acha item com maior prio
     int best_idx = -1;
     int best_priority = 999;
     
@@ -126,13 +122,12 @@ QueueItem remove_highest_priority(ReadyQueue* queue) {
         }
     }
     
-    // Get the result
     QueueItem result = queue->processes[best_idx];
     
-    // Mark as NULL and compact the array by moving items forward
+    // marca como nulo na fila
     queue->processes[best_idx] = NULL;
     
-    // Simple approach: rebuild the queue without the removed item
+    // reconstroi fila sem o item removido
     QueueItem temp[MAX_PROCESSES];
     int temp_count = 0;
     
@@ -143,7 +138,6 @@ QueueItem remove_highest_priority(ReadyQueue* queue) {
         }
     }
     
-    // Rebuild queue
     queue->front = 0;
     queue->rear = temp_count;
     queue->size = temp_count;

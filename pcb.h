@@ -1,4 +1,3 @@
-
 #ifndef PCB_H
 #define PCB_H
 
@@ -18,13 +17,13 @@ typedef struct {
     int num_threads;
     int start_time;
     ProcessState state;
-    int logged_finish; // Flag to avoid duplicate finish logs
+    int logged_finish; // flag pra evitar duplicatas no log
     pthread_mutex_t mutex;
     pthread_cond_t cv;
     pthread_t *thread_ids;
 } PCB;
 
-// Getters
+// getters
 int pcb_get_pid(PCB* pcb);
 int pcb_get_process_len(PCB* pcb);
 int pcb_get_remaining_time(PCB* pcb);
@@ -38,7 +37,7 @@ pthread_cond_t* pcb_get_cv(PCB* pcb);
 pthread_t* pcb_get_thread_ids(PCB* pcb);
 pthread_t pcb_get_thread_id(PCB* pcb, int index);
 
-// Setters
+// setters
 void pcb_set_pid(PCB* pcb, int pid);
 void pcb_set_process_len(PCB* pcb, int process_len);
 void pcb_set_remaining_time(PCB* pcb, int remaining_time);
@@ -49,7 +48,7 @@ void pcb_set_state(PCB* pcb, ProcessState state);
 void pcb_set_logged_finish(PCB* pcb, int logged_finish);
 void pcb_set_thread_ids(PCB* pcb, pthread_t* thread_ids);
 
-// Utility functions
+// utils
 void pcb_decrease_remaining_time(PCB* pcb, int amount);
 void pcb_init_mutex(PCB* pcb);
 void pcb_init_cv(PCB* pcb);
@@ -61,4 +60,4 @@ void pcb_wait_cv(PCB* pcb);
 void pcb_broadcast_cv(PCB* pcb);
 void pcb_free_thread_ids(PCB* pcb);
 
-#endif // PCB_H 
+#endif 

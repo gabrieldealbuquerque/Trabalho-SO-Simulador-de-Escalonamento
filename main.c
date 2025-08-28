@@ -12,7 +12,7 @@
 #include <sys/time.h>
 #include <stdint.h>
 
-// Global variables
+// globais
 extern ReadyQueue ready_queue;
 extern pthread_cond_t scheduler_cv;
 extern pthread_mutex_t scheduler_mutex;
@@ -22,9 +22,8 @@ int num_processes;
 int quantum;
 int scheduler_type;
 PCB* pcb_list;
-long long simulation_start_ms;
 
-// Function to get current time in ms
+// pega tempo em ms
 long long current_time_ms() {
     struct timeval tv;
     if (gettimeofday(&tv, NULL) != 0) {
@@ -34,35 +33,29 @@ long long current_time_ms() {
     return (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000);
 }
 
-// Add generator function
 void* generator_func(void* arg) {
     (void)arg;
     long long start_time = current_time_ms();
-    simulation_start_ms = start_time;
     int idx = 0;
     while (idx < num_processes) {
         PCB* pcb = &pcb_list[idx];
         long long now = current_time_ms() - start_time;
         if (now >= pcb_get_start_time(pcb)) {
             if (is_multiprocessor_mode()) {
-                // In multi, enqueue each thread (TCB) individually
+                // no multi poe na fila cada thread individual
                 for (int j = 0; j < pcb_get_num_threads(pcb); j++) {
                     TCB* tcb = malloc(sizeof(TCB));
                     tcb->pcb = pcb;
                     tcb->thread_index = j;
-                    tcb->last_processor_id = -1; // Initialize as unassigned
-                    tcb->preferred_processor_id = -1; // Will be assigned when enqueued
                     pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
                     enqueue(&ready_queue, (QueueItem)tcb);
                 }
             } else {
-                // In mono, create threads but enqueue the process (PCB)
+                // no mono cria threads mas poe o processo na fila
                 for (int j = 0; j < pcb_get_num_threads(pcb); j++) {
                     TCB* tcb = malloc(sizeof(TCB));
                     tcb->pcb = pcb;
                     tcb->thread_index = j;
-                    tcb->last_processor_id = -1; // Initialize as unassigned
-                    tcb->preferred_processor_id = -1; // Will be assigned when enqueued
                     pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
                 }
                 enqueue(&ready_queue, (QueueItem)pcb);
@@ -89,7 +82,6 @@ int compare_start_time(const void* a, const void* b) {
     return pcb_get_start_time(pcb_a) - pcb_get_start_time(pcb_b);
 }
 
-// Main function
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
@@ -97,7 +89,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Initialize configuration (mode automatically detected from compile flags)
+    // inicia a config, pega o modo de processador de flags de compilacao
     init_config();
 
     FILE* input = fopen(argv[1], "r");
@@ -117,25 +109,20 @@ int main(int argc, char* argv[]) {
         pcb_set_priority(pcb, priority);
         pcb_set_num_threads(pcb, num_threads);
         pcb_set_start_time(pcb, start_time);
-        pcb_set_pid(pcb, i + 1); // PIDs start from 1
-        // Process gets full duration, threads share it
+        pcb_set_pid(pcb, i + 1); // PID comeca em 1
         pcb_set_remaining_time(pcb, process_len);
         pcb_set_state(pcb, READY);
-        pcb_set_logged_finish(pcb, 0); // Initialize finish log flag
+        pcb_set_logged_finish(pcb, 0); 
         pcb_init_mutex(pcb);
         pcb_init_cv(pcb);
         pcb_set_thread_ids(pcb, malloc(num_threads * sizeof(pthread_t)));
     }
 
     fscanf(input, "%d", &scheduler_type);
-    // Assuming quantum is fixed or read if needed; spec seems to have it in input?
-    quantum = 500; // Default quantum 500ms
+    quantum = 500;
 
     fclose(input);
 
-    // Set deterministic seed for reproducible results
-    srand(12345);
-    
     init_log();
     init_scheduler();
 
@@ -150,7 +137,7 @@ int main(int argc, char* argv[]) {
     pthread_t generator_thread;
     pthread_create(&generator_thread, NULL, generator_func, NULL);
 
-    // Wait for all processes to finish
+    // espera todos os processos terminarem
     pthread_join(generator_thread, NULL);
     for (int i = 0; i < cpu_count; i++) {
         pthread_join(scheduler_threads[i], NULL);
@@ -163,7 +150,7 @@ int main(int argc, char* argv[]) {
 
     save_log("escalonador_log_minikernel.txt");
 
-    // Cleanup
+    // liberacao de memoria
     for (int i = 0; i < num_processes; i++) {
         pcb_free_thread_ids(&pcb_list[i]);
         pcb_destroy_mutex(&pcb_list[i]);

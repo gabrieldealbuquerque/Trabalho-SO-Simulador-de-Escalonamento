@@ -1,7 +1,7 @@
 #include "pcb.h"
 #include <stdlib.h>
 
-// Getters
+// getters
 int pcb_get_pid(PCB* pcb) {
     return pcb->pid;
 }
@@ -50,7 +50,7 @@ pthread_t pcb_get_thread_id(PCB* pcb, int index) {
     return pcb->thread_ids[index];
 }
 
-// Setters
+// setters
 void pcb_set_pid(PCB* pcb, int pid) {
     pcb->pid = pid;
 }
@@ -87,7 +87,7 @@ void pcb_set_thread_ids(PCB* pcb, pthread_t* thread_ids) {
     pcb->thread_ids = thread_ids;
 }
 
-// Utility functions
+// utils
 void pcb_decrease_remaining_time(PCB* pcb, int amount) {
     pcb->remaining_time -= amount;
 }

@@ -7,8 +7,8 @@
 typedef struct {
     PCB* pcb;
     int thread_index;
-    int last_processor_id; // For load balancing in multiprocessor mode
-    int preferred_processor_id; // Preferred processor for this execution cycle
+    int last_processor_id; 
+    int preferred_processor_id; 
 } TCB;
 
-#endif // TCB_H 
+#endif 
