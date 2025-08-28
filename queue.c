@@ -1,6 +1,7 @@
 #include "queue.h"
 #include "config.h"
 #include "tcb.h"
+#include "rbtree.h"
 #include <stdlib.h>
 
 void init_queue(ReadyQueue* queue) {
@@ -8,6 +9,8 @@ void init_queue(ReadyQueue* queue) {
     queue->rear = 0;
     queue->size = 0;
     pthread_mutex_init(&queue->mutex, NULL);
+    // Para CFS com fila ordenada simples
+    queue->cfs_tree = NULL;
 }
 
 void enqueue(ReadyQueue* queue, QueueItem item) {
@@ -148,4 +151,73 @@ QueueItem remove_highest_priority(ReadyQueue* queue) {
     
     pthread_mutex_unlock(&queue->mutex);
     return result;
-} 
+}
+
+// Implementações CFS com fila ordenada por vruntime
+
+static long long item_vruntime(QueueItem item) {
+    if (is_multiprocessor_mode()) {
+        return pcb_get_vruntime(((TCB*)item)->pcb);
+    } else {
+        return pcb_get_vruntime((PCB*)item);
+    }
+}
+
+void cfs_enqueue(ReadyQueue* queue, QueueItem item) {
+    pthread_mutex_lock(&queue->mutex);
+    if (queue->size >= MAX_PROCESSES) {
+        pthread_mutex_unlock(&queue->mutex);
+        return;
+    }
+    long long vr = item_vruntime(item);
+    int pos = 0;
+    for (int i = 0; i < queue->size; i++) {
+        if (item_vruntime(queue->processes[i]) <= vr) pos = i + 1; else break;
+    }
+    for (int i = queue->size; i > pos; i--) queue->processes[i] = queue->processes[i - 1];
+    queue->processes[pos] = item;
+    queue->size++;
+    queue->front = 0;
+    queue->rear = queue->size;
+    pthread_mutex_unlock(&queue->mutex);
+}
+
+QueueItem cfs_dequeue(ReadyQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    if (queue->size == 0) { pthread_mutex_unlock(&queue->mutex); return NULL; }
+    QueueItem it = queue->processes[0];
+    for (int i = 1; i < queue->size; i++) queue->processes[i - 1] = queue->processes[i];
+    queue->size--;
+    queue->front = 0;
+    queue->rear = queue->size;
+    pthread_mutex_unlock(&queue->mutex);
+    return it;
+}
+
+QueueItem cfs_peek(ReadyQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    QueueItem it = (queue->size > 0) ? queue->processes[0] : NULL;
+    pthread_mutex_unlock(&queue->mutex);
+    return it;
+}
+
+int cfs_is_empty(ReadyQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    int empty = (queue->size == 0);
+    pthread_mutex_unlock(&queue->mutex);
+    return empty;
+}
+
+long long cfs_get_min_vruntime(ReadyQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    long long v = (queue->size > 0) ? item_vruntime(queue->processes[0]) : 0;
+    pthread_mutex_unlock(&queue->mutex);
+    return v;
+}
+
+int cfs_size(ReadyQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    int s = queue->size;
+    pthread_mutex_unlock(&queue->mutex);
+    return s;
+}

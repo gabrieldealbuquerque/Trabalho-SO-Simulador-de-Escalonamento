@@ -73,11 +73,13 @@ void* scheduler_func(void* arg) {
 
     while (1) {
         pthread_mutex_lock(&scheduler_mutex);
-        while (is_empty(&ready_queue) && !generator_done) {
+        int queue_empty = (scheduler_type == 4) ? cfs_is_empty(&ready_queue) : is_empty(&ready_queue);
+        while (queue_empty && !generator_done) {
             pthread_cond_wait(&scheduler_cv, &scheduler_mutex);
+            queue_empty = (scheduler_type == 4) ? cfs_is_empty(&ready_queue) : is_empty(&ready_queue);
         }
         
-        if (is_empty(&ready_queue) && generator_done) {
+        if (queue_empty && generator_done) {
             int all_finished = 1;
             for (int i = 0; i < num_processes; i++) {
                 PCB* check_pcb = &pcb_list[i];
@@ -99,7 +101,8 @@ void* scheduler_func(void* arg) {
             break;
         }
         
-        if (is_empty(&ready_queue)) {
+        queue_empty = (scheduler_type == 4) ? cfs_is_empty(&ready_queue) : is_empty(&ready_queue);
+        if (queue_empty) {
             pthread_mutex_unlock(&scheduler_mutex);
             continue;
         }
@@ -107,6 +110,8 @@ void* scheduler_func(void* arg) {
         QueueItem item;
         if (scheduler_type == 3) { // PRIORITY
             item = remove_highest_priority(&ready_queue);
+        } else if (scheduler_type == 4) { // CFS
+            item = cfs_dequeue(&ready_queue);
         } else {
             item = dequeue(&ready_queue);
         }
@@ -147,6 +152,12 @@ void* scheduler_func(void* arg) {
                 log_event("[%s] Executando processo PID %d prioridade %d // processador %d\n", policy, pcb_get_pid(pcb), pcb_get_priority(pcb), processor_id);
             } else {
                 log_event("[%s] Executando processo PID %d prioridade %d\n", policy, pcb_get_pid(pcb), pcb_get_priority(pcb));
+            }
+        } else if (scheduler_type == 4) { // CFS
+            if (is_multiprocessor_mode()) {
+                log_event("[%s] Executando processo PID %d vruntime %lld // processador %d\n", policy, pcb_get_pid(pcb), pcb_get_vruntime(pcb), processor_id);
+            } else {
+                log_event("[%s] Executando processo PID %d vruntime %lld\n", policy, pcb_get_pid(pcb), pcb_get_vruntime(pcb));
             }
         } else { // FCFS
             if (is_multiprocessor_mode()) {
@@ -227,7 +238,7 @@ void* scheduler_func(void* arg) {
                 pthread_mutex_unlock(&scheduler_mutex);
             }
             pcb_unlock_mutex(pcb);
-        } else { // PRIORITY - preemptivo
+        } else if (scheduler_type == 3) { // PRIORITY - preemptivo
             // fica sempre checando pra ver se um novo processo com maior prioridade chegou
             int finished = 0;
             while (!finished) {
@@ -279,6 +290,62 @@ void* scheduler_func(void* arg) {
                 }
                 pthread_mutex_unlock(&scheduler_mutex);
             }
+        } else if (scheduler_type == 4) { // CFS
+            // Inicializa exec_start para medir tempo de execução
+            pcb_lock_mutex(pcb);
+            pcb_set_exec_start(pcb, current_time_ms());
+            pcb_unlock_mutex(pcb);
+
+            // Timeslice fixo de 500ms para casar com tick das threads
+            int timeslice = 500;
+
+            long long start_time = current_time_ms();
+            int finished = 0;
+
+            while (!finished && (current_time_ms() - start_time) < timeslice) {
+                struct timespec wait_ts = {0, 1000000}; // 1ms
+                nanosleep(&wait_ts, NULL);
+
+                pcb_lock_mutex(pcb);
+                if (pcb_get_state(pcb) == FINISHED) {
+                    if (!pcb_get_logged_finish(pcb)) {
+                        log_event("[%s] Processo PID %d finalizado\n", policy, pcb_get_pid(pcb));
+                        pcb_set_logged_finish(pcb, 1);
+                    }
+                    finished = 1;
+                }
+                pcb_unlock_mutex(pcb);
+                
+                // Verifica preempção: se há processo com vruntime muito menor
+                if (!cfs_is_empty(&ready_queue)) {
+                    long long min_vruntime = cfs_get_min_vruntime(&ready_queue);
+                    long long current_vruntime = pcb_get_vruntime(pcb);
+                    
+                    // Preempta se a diferença for significativa (> 1ms)
+                    if (min_vruntime + 1 < current_vruntime) {
+                        break; // Preempção
+                    }
+                }
+            }
+
+            // Fim do timeslice ou processo terminou
+            pcb_lock_mutex(pcb);
+            if (!finished && pcb_get_state(pcb) == RUNNING && pcb_get_remaining_time(pcb) > 0) {
+                // Atualiza vruntime corretamente
+                long long exec_time = current_time_ms() - pcb_get_exec_start(pcb);
+                pcb_update_vruntime(pcb, exec_time);
+
+                pcb_set_state(pcb, READY);
+                if (is_multiprocessor_mode()) {
+                    cfs_enqueue(&ready_queue, (QueueItem)tcb);
+                } else {
+                    cfs_enqueue(&ready_queue, (QueueItem)pcb);
+                }
+                pthread_mutex_lock(&scheduler_mutex);
+                pthread_cond_broadcast(&scheduler_cv);
+                pthread_mutex_unlock(&scheduler_mutex);
+            }
+            pcb_unlock_mutex(pcb);
         }
     }
     
@@ -310,5 +377,7 @@ void* scheduler_func(void* arg) {
 char* get_policy_string() {
     if (scheduler_type == 1) return "FCFS";
     if (scheduler_type == 2) return "RR";
-    return "PRIORITY";
+    if (scheduler_type == 3) return "PRIORITY";
+    if (scheduler_type == 4) return "CFS";
+    return "UNKNOWN";
 }

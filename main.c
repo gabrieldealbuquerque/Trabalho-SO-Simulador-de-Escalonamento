@@ -48,7 +48,13 @@ void* generator_func(void* arg) {
                     tcb->pcb = pcb;
                     tcb->thread_index = j;
                     pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
-                    enqueue(&ready_queue, (QueueItem)tcb);
+                    
+                    // Usa CFS se scheduler_type == 4
+                    if (scheduler_type == 4) {
+                        cfs_enqueue(&ready_queue, (QueueItem)tcb);
+                    } else {
+                        enqueue(&ready_queue, (QueueItem)tcb);
+                    }
                 }
             } else {
                 // no mono cria threads mas poe o processo na fila
@@ -58,7 +64,13 @@ void* generator_func(void* arg) {
                     tcb->thread_index = j;
                     pthread_create(&pcb_get_thread_ids(pcb)[j], NULL, thread_func, tcb);
                 }
-                enqueue(&ready_queue, (QueueItem)pcb);
+                
+                // Usa CFS se scheduler_type == 4
+                if (scheduler_type == 4) {
+                    cfs_enqueue(&ready_queue, (QueueItem)pcb);
+                } else {
+                    enqueue(&ready_queue, (QueueItem)pcb);
+                }
             }
             pthread_mutex_lock(&scheduler_mutex);
             pthread_cond_broadcast(&scheduler_cv);
@@ -83,6 +95,8 @@ int compare_start_time(const void* a, const void* b) {
 }
 
 int main(int argc, char* argv[]) {
+    printf("DEBUG: Programa iniciado\n");
+    
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
         fprintf(stderr, "Note: Processor mode (mono/multi) is determined at compile time\n");
@@ -116,10 +130,14 @@ int main(int argc, char* argv[]) {
         pcb_init_mutex(pcb);
         pcb_init_cv(pcb);
         pcb_set_thread_ids(pcb, malloc(num_threads * sizeof(pthread_t)));
+        
+        // Inicializa campos CFS
+        pcb_init_cfs_fields(pcb);
     }
 
     fscanf(input, "%d", &scheduler_type);
     quantum = 500;
+    printf("DEBUG: Scheduler type: %d\n", scheduler_type);
 
     fclose(input);
 

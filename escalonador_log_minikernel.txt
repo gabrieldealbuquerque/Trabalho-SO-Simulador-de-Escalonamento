@@ -1,16 +1,27 @@
-[PRIORITY] Executando processo PID 1 prioridade 3 // processador 1
-[PRIORITY] Executando processo PID 1 prioridade 3 // processador 0
-[PRIORITY] Executando processo PID 2 prioridade 2 // processador 1
-[PRIORITY] Executando processo PID 5 prioridade 1 // processador 1
-[PRIORITY] Processo PID 5 finalizado
-[PRIORITY] Executando processo PID 2 prioridade 2 // processador 1
-[PRIORITY] Processo PID 2 finalizado
-[PRIORITY] Executando processo PID 1 prioridade 3 // processador 1
-[PRIORITY] Processo PID 1 finalizado
-[PRIORITY] Executando processo PID 3 prioridade 4 // processador 0
-[PRIORITY] Executando processo PID 3 prioridade 4 // processador 1
-[PRIORITY] Processo PID 3 finalizado
-[PRIORITY] Executando processo PID 4 prioridade 5 // processador 0
-[PRIORITY] Executando processo PID 4 prioridade 5 // processador 1
-[PRIORITY] Processo PID 4 finalizado
+[CFS] Executando processo PID 1 vruntime 0 // processador 1
+[CFS] Executando processo PID 1 vruntime 0 // processador 0
+[CFS] Executando processo PID 2 vruntime 0 // processador 1
+[CFS] Executando processo PID 3 vruntime 0 // processador 0
+[CFS] Executando processo PID 3 vruntime 624 // processador 0
+[CFS] Executando processo PID 2 vruntime 400 // processador 1
+[CFS] Executando processo PID 3 vruntime 1248 // processador 0
+[CFS] Processo PID 2 finalizado
+[CFS] Executando processo PID 4 vruntime 0 // processador 1
+[CFS] Executando processo PID 4 vruntime 0 // processador 0
+[CFS] Executando processo PID 5 vruntime 0 // processador 1
+[CFS] Executando processo PID 1 vruntime 500 // processador 0
+[CFS] Executando processo PID 4 vruntime 780 // processador 0
+[CFS] Executando processo PID 5 vruntime 322 // processador 1
+[CFS] Processo PID 4 finalizado
+[CFS] Executando processo PID 1 vruntime 1000 // processador 0
+[CFS] Executando processo PID 5 vruntime 644 // processador 1
+[CFS] Processo PID 5 finalizado
+[CFS] Executando processo PID 3 vruntime 1249 // processador 0
+[CFS] Executando processo PID 3 vruntime 1249 // processador 1
+[CFS] Executando processo PID 3 vruntime 1872 // processador 0
+[CFS] Processo PID 3 finalizado
+[CFS] Executando processo PID 1 vruntime 1500 // processador 1
+[CFS] Executando processo PID 1 vruntime 2000 // processador 1
+[CFS] Executando processo PID 1 vruntime 2500 // processador 1
+[CFS] Processo PID 1 finalizado
 Escalonador terminou execução de todos processos

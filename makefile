@@ -1,7 +1,7 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -pthread
+CFLAGS = -Wall -Wextra -std=c99 -pthread -g
 
-SOURCES = main.c queue.c scheduler.c log.c pcb.c config.c
+SOURCES = main.c queue.c scheduler.c log.c pcb.c config.c rbtree.c
 TARGET = trabSO
 
 all: monoprocessador
